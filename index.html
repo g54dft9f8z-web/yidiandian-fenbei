@@ -556,32 +556,45 @@ function nextOcr(){
     if(o) showPrev(o,left); else nextOcr();
   });
 }
+/* 识别失败可能留下损坏的语言包缓存（IndexedDB keyval-store），清掉再重试 */
+function clearTessCache(){
+  return new Promise(function(res){
+    try{
+      var r=indexedDB.deleteDatabase('keyval-store');
+      r.onsuccess=r.onerror=r.onblocked=function(){res();};
+      setTimeout(res,1500);
+    }catch(e){res();}
+  });
+}
 async function runOcr(f,cb){
   stat('正在加载识别引擎，第一次要下载语言包，请等一下');
   loadTess(async function(){
     var lastErr=null;
-    for(var i=0;i<OCR_CFG.length;i++){
-      var cfg=OCR_CFG[i],worker=null;
-      try{
-        worker=await Tesseract.createWorker('chi_sim',1,{
-          workerPath:cfg.workerPath, corePath:cfg.corePath, langPath:cfg.langPath,
-          logger:function(m){
-            if(m&&m.status&&m.progress!=null){
-              var s=m.status==='recognizing text'?'正在识别 '+Math.round(m.progress*100)+'%':'准备中 '+Math.round(m.progress*100)+'%';
-              stat(s);
-            }
-          }});
-        var r=await worker.recognize(f);
-        await worker.terminate();
-        var o=parseOcr(r.data.text||'');
-        if(!o.drink&&!o.spec&&!o.addon){
-          stat('有一张没认出内容，跳过了。可以手动在订单表加一行，或换个清晰点的截图');
-          cb(null); return;
+    for(var pass=0;pass<2;pass++){
+      for(var i=0;i<OCR_CFG.length;i++){
+        var cfg=OCR_CFG[i],worker=null;
+        try{
+          worker=await Tesseract.createWorker('chi_sim',1,{
+            workerPath:cfg.workerPath, corePath:cfg.corePath, langPath:cfg.langPath,
+            logger:function(m){
+              if(m&&m.status&&m.progress!=null){
+                var s=m.status==='recognizing text'?'正在识别 '+Math.round(m.progress*100)+'%':'准备中 '+Math.round(m.progress*100)+'%';
+                stat(s);
+              }
+            }});
+          var r=await worker.recognize(f);
+          await worker.terminate();
+          var o=parseOcr(r.data.text||'');
+          if(!o.drink&&!o.spec&&!o.addon){
+            stat('有一张没认出内容，跳过了。可以手动在订单表加一行，或换个清晰点的截图');
+            cb(null); return;
+          }
+          cb(o); return;
+        }catch(e){
+          lastErr=e;
+          if(worker){try{await worker.terminate();}catch(_){}}
+          await clearTessCache();
         }
-        cb(o); return;
-      }catch(e){
-        lastErr=e;
-        if(worker){try{await worker.terminate();}catch(_){}}
       }
     }
     stat('有一张识别出错跳过了：'+((lastErr&&lastErr.message)||lastErr));
