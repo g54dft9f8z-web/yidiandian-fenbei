@@ -522,8 +522,16 @@ function switchTmpl(){renderPrint();}
 /* ---- 截图识别 ---- */
 var MENU=['四季奶青','阿萨姆奶茶','波霸奶茶','红茶玛奇朵','乌龙奶茶','焦糖奶茶','冰淇淋红茶','冰淇淋乌龙','八宝茶','养乐多绿','葡萄柚绿','葡萄柚绿茶','四季春茶','阿萨姆红茶','乌龙茶','仙草奶冻','咖啡冻奶','柠檬蜜','提拉米苏奶茶','正山小种','红茶','绿茶','奶茶'];
 function stat(t){var e=document.getElementById('ocrstat');e.style.display='block';e.textContent=t;}
-var TESS_SRC=['https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
+var TESS_SRC=['vendor/tesseract.min.js',
+              'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
               'https://unpkg.com/tesseract.js@5.1.1/dist/tesseract.min.js'];
+/* 识别引擎配置：优先用站点自带资源，失败再退回公共 CDN */
+var OCR_CFG=[
+  {workerPath:'vendor/worker.min.js',corePath:'vendor',langPath:'lang'},
+  {workerPath:'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
+   corePath:'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.0',
+   langPath:'https://tessdata.projectnaptha.com/4.0.0_fast'}
+];
 function loadTess(cb,idx){
   idx=idx||0;
   if(window.Tesseract) return cb();
@@ -551,24 +559,33 @@ function nextOcr(){
 async function runOcr(f,cb){
   stat('正在加载识别引擎，第一次要下载语言包，请等一下');
   loadTess(async function(){
-    try{
-      var worker=await Tesseract.createWorker('chi_sim',1,{
-        langPath:'https://tessdata.projectnaptha.com/4.0.0_fast',
-        logger:function(m){
-          if(m&&m.status&&m.progress!=null){
-            var s=m.status==='recognizing text'?'正在识别 '+Math.round(m.progress*100)+'%':'准备中 '+Math.round(m.progress*100)+'%';
-            stat(s);
-          }
-        }});
-      var r=await worker.recognize(f);
-      await worker.terminate();
-      var o=parseOcr(r.data.text||'');
-      if(!o.drink&&!o.spec&&!o.addon){
-        stat('有一张没认出内容，跳过了。可以手动在订单表加一行，或换个清晰点的截图');
-        cb(null); return;
+    var lastErr=null;
+    for(var i=0;i<OCR_CFG.length;i++){
+      var cfg=OCR_CFG[i],worker=null;
+      try{
+        worker=await Tesseract.createWorker('chi_sim',1,{
+          workerPath:cfg.workerPath, corePath:cfg.corePath, langPath:cfg.langPath,
+          logger:function(m){
+            if(m&&m.status&&m.progress!=null){
+              var s=m.status==='recognizing text'?'正在识别 '+Math.round(m.progress*100)+'%':'准备中 '+Math.round(m.progress*100)+'%';
+              stat(s);
+            }
+          }});
+        var r=await worker.recognize(f);
+        await worker.terminate();
+        var o=parseOcr(r.data.text||'');
+        if(!o.drink&&!o.spec&&!o.addon){
+          stat('有一张没认出内容，跳过了。可以手动在订单表加一行，或换个清晰点的截图');
+          cb(null); return;
+        }
+        cb(o); return;
+      }catch(e){
+        lastErr=e;
+        if(worker){try{await worker.terminate();}catch(_){}}
       }
-      cb(o);
-    }catch(e){stat('有一张识别出错跳过了：'+(e.message||e));cb(null);}
+    }
+    stat('有一张识别出错跳过了：'+((lastErr&&lastErr.message)||lastErr));
+    cb(null);
   });
 }
 function parseOcr(text){
