@@ -82,6 +82,22 @@ td select.zsel{width:100%;border:0;background:transparent;padding:2px 0;font-siz
 .pv input,.pv select{width:100%;border:1px solid var(--line2);border-radius:8px;padding:8px 10px;
   font-size:14px;font-family:inherit;background:var(--card);color:var(--tx)}
 .pv .full{grid-column:1/-1}
+/* 认领：把「这杯是谁的」点一下解决 */
+.noclaim{background:var(--warn-bg) !important}
+.noclaim td.num{background:#fdf0d8}
+.cpwrap{background:var(--acc-bg);border:1px solid #b5d4f4;border-radius:10px;padding:10px 12px}
+.cpwrap > label{font-size:11px;color:var(--acc);display:block;margin-bottom:6px}
+.cpwrap input{width:100%;border:1px solid var(--line2);border-radius:8px;padding:9px 10px;
+  font-size:15px;font-family:inherit;background:var(--card);color:var(--tx)}
+.cprow{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.cchip{border:1px solid var(--line2);background:var(--card);border-radius:999px;
+  padding:6px 12px;font-size:13px;cursor:pointer;color:var(--tx);white-space:nowrap}
+.cchip:hover{border-color:var(--acc);color:var(--acc)}
+.cchip.hit{border-color:var(--acc);background:var(--acc);color:#fff}
+.cchip i{font-style:normal;color:var(--tx3);font-size:11px;margin-left:4px}
+.cchip.hit i{color:#dbe8f7}
+.cpsel{background:var(--acc);color:#fff}
+.flagDone{color:var(--ok)}
 /* 打印区 */
 .ptmpl{display:none}
 .ptmpl.on{display:block}
@@ -159,6 +175,7 @@ td select.zsel{width:100%;border:0;background:transparent;padding:2px 0;font-siz
   <div class="sub">接单编号 → 打印杯贴 → 现场报号核销　数据存在本机浏览器，关掉不会丢</div>
   <div class="stats">
     <div class="stat b"><b id="s-total">0</b><span>总杯数</span></div>
+    <div class="stat o"><b id="s-claim">0</b><span>不知道是谁</span></div>
     <div class="stat o"><b id="s-left">0</b><span>待分发</span></div>
     <div class="stat g"><b id="s-done">0</b><span>已取走</span></div>
   </div>
@@ -169,6 +186,7 @@ td select.zsel{width:100%;border:0;background:transparent;padding:2px 0;font-siz
   <button class="on" data-t="in">1 录单编号</button>
   <button data-t="pr">2 打印清单</button>
   <button data-t="out">3 分发核销</button>
+  <button data-t="ct">4 客户档案</button>
 </nav>
 
 <!-- 录单 -->
@@ -183,6 +201,14 @@ td select.zsel{width:100%;border:0;background:transparent;padding:2px 0;font-siz
       <div id="ocrstat"></div>
     </div>
     <div class="pv" id="ocrprev" style="display:none">
+      <div class="full">
+        <div class="cpwrap">
+          <label>这一杯是谁的？点常用客户，或输名字 / 手机后四位</label>
+          <input id="o-pick" placeholder="输名字或后四位，回车选中第一个" autocomplete="off"
+                 oninput="pickFilter()" onkeydown="if(event.key==='Enter'){event.preventDefault();pickFirst();}">
+          <div class="cprow" id="o-picks"></div>
+        </div>
+      </div>
       <div><label>客户姓名（可空）</label><input id="o-name"></div>
       <div><label>手机后四位（可空）</label><input id="o-phone" maxlength="4"></div>
       <div class="full"><label>品名</label><input id="o-drink"></div>
@@ -208,6 +234,7 @@ td select.zsel{width:100%;border:0;background:transparent;padding:2px 0;font-siz
       <button class="btn" onclick="renumber()">重新编号</button>
       <button class="btn" onclick="sortBy('drink')">按品名排序</button>
       <button class="btn" onclick="sortBy('zone')">按配送点排序</button>
+      <button class="btn" id="btn-nc" onclick="toggleNc()">只看没认领的</button>
       <button class="btn dgr" onclick="clearDone()">清掉已取</button>
       <button class="btn dgr" onclick="clearAll()">清空全部</button>
     </div>
@@ -222,6 +249,21 @@ td select.zsel{width:100%;border:0;background:transparent;padding:2px 0;font-siz
         <tbody id="tb"></tbody>
       </table>
     </div>
+  </div>
+
+  <div class="box">
+    <h2>按顺序认领（一批截图配对最快的方式）</h2>
+    <div class="tip">微信里客户是挨个发截图的。你把这批人的名字<b>按发送顺序</b>粘进来，工具会从上到下依次认领那些还不知道是谁的单。<br>
+    每行一个人：<b>姓名</b>（可选空格 + <b>手机后四位</b>，再可选 + <b>板块</b>）。已经填过姓名的单会自动跳过，不会覆盖。<br>
+    名单从哪来最快：在群里发一个<b>接龙</b>（群接龙自带昵称顺序），或者直接复制微信聊天里挨个发言的顺序。</div>
+    <textarea id="namelist" placeholder="张三 8765&#10;李四 3421 到店自提&#10;王五"></textarea>
+    <div class="row" style="margin-top:10px">
+      <button class="btn pri" onclick="claimSeq()">按顺序认领</button>
+      <button class="btn" onclick="claimSeqPreview()">先看配对结果</button>
+      <button class="btn" onclick="document.getElementById('namelist').value=''">清空</button>
+      <span class="ts" id="claim-info"></span>
+    </div>
+    <div id="claim-prev"></div>
   </div>
 
   <div class="box">
@@ -242,6 +284,50 @@ td select.zsel{width:100%;border:0;background:transparent;padding:2px 0;font-siz
       <button class="btn" onclick="document.getElementById('file').click()">导入备份</button>
       <button class="btn" onclick="exportCsv()">导出 Excel(CSV)</button>
       <input type="file" id="file" accept=".json" style="display:none" onchange="importJson(this)">
+    </div>
+  </div>
+</div>
+
+<!-- 客户档案 -->
+<div class="pane" id="p-ct">
+  <div class="box">
+    <h2>常用下单人</h2>
+    <div class="tip">每录一单都会自动记住这个人（名字 + 后四位 + 常走的板块），下次在识别框里点一下就能认领，按下单次数排序。
+      这里也可以手工维护：先把老客户的微信昵称录一遍，现场就不用再问「你是谁」了。</div>
+    <div class="tbl-scroll">
+      <table>
+        <thead><tr>
+          <th style="min-width:110px">姓名 / 昵称</th><th style="width:90px">手机后四位</th>
+          <th style="min-width:120px">常用板块</th><th style="width:64px">次数</th>
+          <th style="min-width:110px">备注</th><th style="width:64px">操作</th>
+        </tr></thead>
+        <tbody id="ct-tb"></tbody>
+      </table>
+    </div>
+    <div class="row" style="margin:12px 0 0">
+      <button class="btn pri" onclick="addContact()">+ 加一个客户</button>
+      <button class="btn" onclick="extractContacts()">从现有订单提取</button>
+      <button class="btn dgr" onclick="clearContacts()">清空客户档案</button>
+    </div>
+  </div>
+
+  <div class="box">
+    <h2>批量导入名单</h2>
+    <div class="tip">从群成员列表、Excel 粘过来。每行一个：<b>姓名</b>（可选 + 后四位，可选 + 板块）。姓名重复会自动合并。</div>
+    <textarea id="ctpaste" placeholder="张三 8765 师院配送&#10;李四 3421 到店自提"></textarea>
+    <div class="row" style="margin-top:10px">
+      <button class="btn pri" onclick="pasteContacts()">导入到客户档案</button>
+      <button class="btn" onclick="document.getElementById('ctpaste').value=''">清空</button>
+      <span class="ts" id="ct-info"></span>
+    </div>
+  </div>
+
+  <div class="box">
+    <h2>还没认领的单</h2>
+    <div class="tip">这一批里还没配上人的编号。剩下的要么在表里点着补，要么把编号发群里让客户自己报。</div>
+    <div id="nc-list" class="cprow"></div>
+    <div class="row" style="margin:10px 0 0">
+      <button class="btn" onclick="copyNc()">复制编号名单（发群里收尾）</button>
     </div>
   </div>
 </div>
@@ -297,17 +383,38 @@ td select.zsel{width:100%;border:0;background:transparent;padding:2px 0;font-siz
 </div>
 
 <script>
-var KEY='ydyd_orders_v1';
+var KEY='ydyd_orders_v1', CKEY='ydyd_contacts_v1';
 var F=['name','phone','drink','spec','addon','zone','note'];
-var orders=[], filt='all';
+var orders=[], contacts=[], filt='all', ncOnly=false;
 
 function load(){
   try{var s=localStorage.getItem(KEY); orders=s?JSON.parse(s):[];}catch(e){orders=[];}
+  try{var c=localStorage.getItem(CKEY); contacts=c?JSON.parse(c):[];}catch(e){contacts=[];}
   if(!orders.length) orders=[blank(),blank(),blank()];
   renumber();
 }
 function save(){localStorage.setItem(KEY,JSON.stringify(orders));}
+function saveC(){localStorage.setItem(CKEY,JSON.stringify(contacts));sortContacts();}
+function sortContacts(){
+  contacts.sort(function(a,b){
+    return (b.cnt||0)-(a.cnt||0)||String(a.name||'').localeCompare(String(b.name||''),'zh');
+  });
+}
 function blank(){return {name:'',phone:'',drink:'',spec:'',addon:'',zone:'',note:'',done:false};}
+/* 认领过的客户自动进档案，下次一键点选 */
+function upsertContact(name,tail,zone){
+  if(!name) return;
+  tail=String(tail||'').replace(/\D/g,'').slice(-4);
+  for(var i=0;i<contacts.length;i++){
+    var c=contacts[i];
+    if(c.name===name||(tail&&c.tail&&c.tail===tail)){
+      c.name=name; if(tail)c.tail=tail; if(zone)c.zone=zone;
+      c.cnt=(c.cnt||0)+1; c.last=today(); saveC(); renderContacts(); return;
+    }
+  }
+  contacts.push({name:name,tail:tail,zone:zone||'',cnt:1,last:today(),memo:''});
+  saveC(); renderContacts();
+}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function pad(n,len){var s=String(n);while(s.length<(len||3))s='0'+s;return s;}
@@ -344,14 +451,21 @@ function zoneCell(o,i){
   return h+'</select></td>';
 }
 
+function isNc(o){return !o.name&&!o.phone;}
 function renderTb(){
   var tb=document.getElementById('tb');
-  if(!orders.length){tb.innerHTML='<tr><td colspan="9" style="text-align:center;color:#888">还没有订单</td></tr>';return;}
-  tb.innerHTML=orders.map(function(o,i){
+  var rows=[];
+  orders.forEach(function(o,i){ if(!ncOnly||isNc(o)) rows.push({o:o,i:i}); });
+  if(!rows.length){
+    tb.innerHTML='<tr><td colspan="9" style="text-align:center;color:#888">'+
+      (ncOnly?'都认领完了，没有无主的杯子':'还没有订单')+'</td></tr>';return;
+  }
+  tb.innerHTML=rows.map(function(r){
+    var o=r.o,i=r.i;
     var inp=function(f,ph){
       return '<td><input value="'+esc(o[f])+'" data-i="'+i+'" data-f="'+f+'" placeholder="'+ph+'"></td>';
     };
-    return '<tr class="'+(o.done?'done':'')+'">'+
+    return '<tr class="'+(o.done?'done':'')+(isNc(o)?' noclaim':'')+'">'+
       '<td class="num">'+esc(o.id)+'</td>'+
       inp('name','—')+inp('phone','后四位')+inp('drink','—')+inp('spec','甜度温度')+inp('addon','—')+
       zoneCell(o,i)+inp('note','—')+
@@ -359,7 +473,7 @@ function renderTb(){
   }).join('');
   tb.querySelectorAll('input').forEach(function(el){
     el.addEventListener('input',function(){
-      orders[+el.dataset.i][el.dataset.f]=el.value; save(); renderPrint(); renderStats();
+      orders[+el.dataset.i][el.dataset.f]=el.value; save(); renderPrint(); renderStats(); renderNc();
     });
   });
   tb.querySelectorAll('select.zsel').forEach(function(el){
@@ -367,6 +481,12 @@ function renderTb(){
       orders[+el.dataset.i].zone=el.value; save(); renderPrint(); renderStats();
     });
   });
+}
+function toggleNc(){
+  ncOnly=!ncOnly;
+  document.getElementById('btn-nc').className=ncOnly?'btn pri':'btn';
+  document.getElementById('btn-nc').textContent=ncOnly?'显示全部':'只看没认领的';
+  renderTb();
 }
 function delRow(i){orders.splice(i,1);if(!orders.length)orders=[blank()];renumber();}
 function dupRow(i){var o=blank();['name','phone','drink','spec','addon','zone','note'].forEach(function(f){o[f]=orders[i][f];});orders.splice(i+1,0,o);renumber();}
@@ -394,9 +514,11 @@ function doPaste(){
 
 function renderStats(){
   var d=orders.filter(function(o){return o.done;}).length;
+  var nc=orders.filter(isNc).length;
   document.getElementById('s-total').textContent=orders.length;
   document.getElementById('s-done').textContent=d;
   document.getElementById('s-left').textContent=orders.length-d;
+  document.getElementById('s-claim').textContent=nc;
   var cnt={'师院配送':0,'理工学院配送':0,'到店自提':0},other=0;
   orders.forEach(function(o){if(cnt[o.zone]!=null)cnt[o.zone]++;else if(o.zone)other++;});
   document.getElementById('z-chips').innerHTML=
@@ -516,7 +638,7 @@ function renderPick(){
   document.getElementById('progtx').textContent='已取 '+d+' / '+orders.length+' 杯（'+pct+'%）';
 }
 
-function renderAll(){renderTb();renderStats();renderPrint();renderPick();}
+function renderAll(){renderTb();renderStats();renderPrint();renderPick();renderContacts();}
 function switchTmpl(){renderPrint();}
 
 /* ---- 截图识别 ---- */
@@ -636,8 +758,48 @@ function parseOcr(text){
   }
   return o;
 }
+/* ---- 认领：把「这杯是谁的」变成点一下 ---- */
+function pickKey(){return (document.getElementById('o-pick').value||'').trim();}
+function matchContacts(k){
+  if(!k) return contacts.slice(0,10);
+  return contacts.filter(function(c){
+    return (c.name&&c.name.indexOf(k)>=0)||(c.tail&&c.tail.indexOf(k)>=0);
+  }).slice(0,10);
+}
+function pickFilter(){
+  var list=matchContacts(pickKey());
+  drawChips(list);
+}
+function drawChips(list){
+  var box=document.getElementById('o-picks');
+  if(!list.length){
+    box.innerHTML='<span class="ts" style="color:var(--tx3);font-size:12px">'+
+      (contacts.length?'没找到，直接输完名字入单，会自动记住':'还没有客户档案，第一次输名字就会自动存下来')+'</span>';
+    return;
+  }
+  box.innerHTML=list.map(function(c,i){
+    return '<span class="cchip'+(i===0?' hit':'')+'" data-n="'+esc(c.name)+'" data-p="'+esc(c.tail||'')+
+      '" data-z="'+esc(c.zone||'')+'" onclick="pick(this)">'+esc(c.name)+
+      (c.tail?'<i>'+esc(c.tail)+'</i>':'')+'</span>';
+  }).join('');
+}
+function pick(el){
+  document.getElementById('o-name').value=el.dataset.n||'';
+  document.getElementById('o-phone').value=el.dataset.p||'';
+  document.getElementById('o-zone').value=el.dataset.z||document.getElementById('o-zone').value;
+  document.getElementById('o-pick').value=el.dataset.n||'';
+  pickFilter();
+  var li=document.getElementById('o-name');
+  li.scrollIntoView({block:'nearest'});
+}
+function pickFirst(){
+  var box=document.getElementById('o-picks');
+  var first=box.querySelector('.cchip');
+  if(first) pick(first);
+}
 function showPrev(o,left){
   stat(left>0?('这张确认完还有 '+left+' 张，入单后自动接着认下一张'):'这是最后一张，入单后本批结束');
+  document.getElementById('o-pick').value='';
   document.getElementById('o-name').value='';
   document.getElementById('o-phone').value='';
   document.getElementById('o-drink').value=o.drink||'';
@@ -645,16 +807,32 @@ function showPrev(o,left){
   document.getElementById('o-addon').value=o.addon||'';
   document.getElementById('o-note').value='';
   document.getElementById('o-zone').value=ZONES[0];
+  pickFilter();
   document.getElementById('ocrprev').style.display='grid';
+  document.getElementById('o-pick').focus();
 }
 function gv(id){return document.getElementById(id).value.trim();}
 function ocrAdd(){
   var o=blank();
+  /* 认领框里输了但没点，直接当新客户姓名用，不浪费这一次输入 */
+  var pk=pickKey();
+  if(pk&&!gv('o-name')){
+    document.getElementById('o-name').value=pk;
+    for(var ci=0;ci<contacts.length;ci++){
+      if(contacts[ci].name===pk){
+        document.getElementById('o-phone').value=contacts[ci].tail||'';
+        document.getElementById('o-zone').value=contacts[ci].zone||document.getElementById('o-zone').value;
+        break;
+      }
+    }
+  }
   o.name=gv('o-name');o.phone=gv('o-phone');o.drink=gv('o-drink');
   o.spec=gv('o-spec');o.addon=gv('o-addon');o.note=gv('o-note');
   o.zone=document.getElementById('o-zone').value;
   if(!o.drink&&!o.spec&&!o.addon){alert('品名和规格都是空的，先填一下再入单');return;}
-  orders.push(o);renumber();
+  orders.push(o);
+  if(o.name) upsertContact(o.name,o.phone,o.zone);
+  renumber();
   document.getElementById('ocrprev').style.display='none';
   nextOcr();
 }
@@ -675,16 +853,163 @@ document.addEventListener('paste',function(e){
   }
 });
 
+/* ---- 客户档案 ---- */
+function renderContacts(){
+  var tb=document.getElementById('ct-tb');
+  if(!contacts.length){
+    tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:#888">还没有客户，录单时填了姓名就会自动记住</td></tr>';
+    renderNc(); return;
+  }
+  tb.innerHTML=contacts.map(function(c,i){
+    var zopt=ZONES.map(function(z){return '<option'+(z===c.zone?' selected':'')+'>'+z+'</option>';}).join('');
+    if(c.zone&&ZONES.indexOf(c.zone)<0) zopt='<option selected>'+esc(c.zone)+'</option>'+zopt;
+    return '<tr>'+
+      '<td><input value="'+esc(c.name)+'" data-i="'+i+'" data-f="name"></td>'+
+      '<td><input value="'+esc(c.tail)+'" maxlength="4" data-i="'+i+'" data-f="tail"></td>'+
+      '<td><select class="zsel" data-i="'+i+'" data-f="zone"><option value="">—</option>'+zopt+'</select></td>'+
+      '<td style="text-align:center">'+esc(c.cnt||0)+'</td>'+
+      '<td><input value="'+esc(c.memo||'')+'" data-i="'+i+'" data-f="memo" placeholder="—"></td>'+
+      '<td class="act"><button class="mini" onclick="delContact('+i+')">删</button></td></tr>';
+  }).join('');
+  tb.querySelectorAll('input').forEach(function(el){
+    el.addEventListener('input',function(){
+      contacts[+el.dataset.i][el.dataset.f]=el.value; saveC();
+    });
+  });
+  tb.querySelectorAll('select.zsel').forEach(function(el){
+    el.addEventListener('change',function(){
+      contacts[+el.dataset.i].zone=el.value; saveC();
+    });
+  });
+  renderNc();
+}
+function addContact(){contacts.unshift({name:'',tail:'',zone:'',cnt:0,last:'',memo:''});saveC();renderContacts();}
+function delContact(i){contacts.splice(i,1);saveC();renderContacts();}
+function clearContacts(){if(confirm('清空客户档案？订单不会受影响。')){contacts=[];saveC();renderContacts();}}
+function splitLine(l){
+  l=l.replace(/^\s*\d+\s*[.、)]\s*/,'');
+  var parts;
+  if(l.indexOf('\t')>=0) parts=l.split('\t');
+  else if(l.indexOf(',')>=0||l.indexOf('，')>=0) parts=l.split(/[,，]/);
+  else parts=l.split(/\s{1,}|、/);
+  return parts.map(function(s){return s.trim();}).filter(Boolean);
+}
+function pasteContacts(){
+  var t=document.getElementById('ctpaste').value.trim();
+  if(!t) return;
+  var lines=t.split(/\r?\n/).map(function(s){return s.trim();}).filter(Boolean),got=0;
+  lines.forEach(function(l){
+    var p=splitLine(l);
+    if(!p.length) return;
+    var name=p[0],tail='',zone='';
+    p.slice(1).forEach(function(v){
+      if(ZONES.indexOf(v)>=0) zone=v;
+      else if(/^\d{3,4}$/.test(v)) tail=v;
+    });
+    if(name){upsertContact(name,tail,zone);got++;}
+  });
+  document.getElementById('ct-info').textContent='导入 / 合并 '+got+' 人';
+  renderContacts();
+}
+function extractContacts(){
+  var got=0;
+  orders.forEach(function(o){ if(o.name){upsertContact(o.name,o.phone,o.zone);got++;} });
+  document.getElementById('ct-info').textContent='从订单提取了 '+got+' 条';
+  renderContacts();
+}
+/* ---- 未认领清单 ---- */
+function renderNc(){
+  var el=document.getElementById('nc-list');
+  if(!el) return;
+  var nc=orders.filter(isNc);
+  el.innerHTML=nc.length?nc.map(function(o){
+    return '<span class="cchip">'+esc(o.id)+'<i>'+esc((o.drink||'—').slice(0,6))+'</i></span>';
+  }).join(''):'<span class="ts" style="color:var(--ok);font-size:12px">全部单子都配上人了</span>';
+}
+function copyNc(){
+  var nc=orders.filter(isNc).map(function(o){return o.id;});
+  if(!nc.length){alert('没有无主的杯子了');return;}
+  var t='这几杯还没认领，麻烦报一下编号和 your name：\n'+nc.join('、');
+  if(navigator.clipboard) navigator.clipboard.writeText(t).then(function(){alert('已复制，去群里粘贴');});
+  else prompt('复制这段发群里：',t);
+}
+/* ---- 按顺序认领 ---- */
+function pendingNc(){return orders.filter(isNc);}
+function claimPlan(){
+  var t=document.getElementById('namelist').value.trim();
+  var names=t.split(/\r?\n/).map(function(s){return s.trim();}).filter(Boolean)
+    .map(function(l){
+      var p=splitLine(l),o={name:p[0]||'',tail:'',zone:''};
+      p.slice(1).forEach(function(v){
+        if(ZONES.indexOf(v)>=0) o.zone=v;
+        else if(/^\d{3,4}$/.test(v)) o.tail=v;
+      });
+      /* 名单里没写板块也没写尾号，就用客户档案里的老信息补齐 */
+      for(var ci=0;ci<contacts.length;ci++){
+        var c=contacts[ci];
+        if(c.name===o.name){
+          if(!o.tail) o.tail=c.tail||'';
+          if(!o.zone) o.zone=c.zone||'';
+          break;
+        }
+      }
+      return o;
+    }).filter(function(o){return o.name;});
+  return {names:names,slots:pendingNc()};
+}
+function claimSeqPreview(){
+  var p=claimPlan(),n=Math.min(p.names.length,p.slots.length);
+  if(!n){
+    document.getElementById('claim-info').textContent=
+      p.slots.length?'名单是空的':'没有需要认领的单了';
+    document.getElementById('claim-prev').innerHTML=''; return;
+  }
+  document.getElementById('claim-info').textContent=
+    '名单 '+p.names.length+' 人，无人认领的单 '+p.slots.length+' 杯 → 这次能配上 '+n+
+    (p.names.length>p.slots.length?'（名单多了 '+(p.names.length-p.slots.length)+' 人，会剩下不用）':
+      p.names.length<p.slots.length?'（名单少了 '+(p.slots.length-p.names.length)+' 人，补齐名单再点一次）':'');
+  document.getElementById('claim-prev').innerHTML='<div class="cprow" style="margin-top:10px">'+
+    p.slots.slice(0,n).map(function(o,i){
+      return '<span class="cchip hit">'+esc(o.id)+' → '+esc(p.names[i].name)+
+        '<i>'+esc((o.drink||'').slice(0,6))+'</i></span>';
+    }).join('')+'</div>';
+}
+function claimSeq(){
+  var p=claimPlan(),n=Math.min(p.names.length,p.slots.length);
+  if(!n){claimSeqPreview();return;}
+  if(!confirm('按发送顺序认领 '+n+' 杯？\n\n'+
+    p.slots.slice(0,n).map(function(o,i){return o.id+' → '+p.names[i].name;}).join('\n')+
+    '\n\n顺序错了可以在订单表里改，改完再走下一步。')) return;
+  for(var i=0;i<n;i++){
+    var s=p.slots[i],c=p.names[i];
+    s.name=c.name;
+    if(c.tail) s.phone=c.tail;
+    if(c.zone) s.zone=c.zone;
+    upsertContact(c.name,c.tail,c.zone);
+  }
+  save(); renumber();
+  document.getElementById('namelist').value='';
+  document.getElementById('claim-prev').innerHTML='';
+  var rest=pendingNc().length;
+  document.getElementById('claim-info').textContent=rest?('认领完了，还剩 '+rest+' 杯没人领'):'全部配上人了';
+}
+
 function exportJson(){
-  var b=new Blob([JSON.stringify(orders,null,1)],{type:'application/json'});
-  dl(b,'订单备份_'+today()+'.json');
+  var data={v:2,orders:orders,contacts:contacts};
+  dl(new Blob([JSON.stringify(data,null,1)],{type:'application/json'}),'订单备份_'+today()+'.json');
 }
 function importJson(el){
   var f=el.files[0]; if(!f) return;
   var r=new FileReader();
   r.onload=function(){
-    try{orders=JSON.parse(r.result);renumber();alert('导入成功');}
-    catch(e){alert('文件格式不对');}
+    try{
+      var d=JSON.parse(r.result);
+      if(d&&d.orders){orders=d.orders; contacts=d.contacts||contacts;}
+      else if(Object.prototype.toString.call(d)==='[object Array]'){orders=d;}
+      else throw 0;
+      saveC(); renumber(); renderContacts();
+      alert('导入成功：'+orders.length+' 单'+(contacts.length?'，'+contacts.length+' 位客户':''));
+    }catch(e){alert('文件格式不对');}
   };
   r.readAsText(f); el.value='';
 }
