@@ -61,6 +61,22 @@ select,input.f{border:1px solid var(--line2);border-radius:8px;padding:7px 10px;
   font-family:inherit;background:var(--card);color:var(--tx)}
 .done{background:var(--ok-bg) !important}
 .done input{color:var(--tx3)}
+.guide{margin-top:10px;background:var(--acc-bg);border:1px solid #b5d4f4;border-radius:8px;
+  padding:9px 12px;font-size:13px;color:var(--acc);line-height:1.5}
+.hi{border-color:#fac775;background:var(--warn-bg)}
+.box.hi h2{color:var(--warn)}
+details{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+details>summary{cursor:pointer;font-size:12.5px;color:var(--tx2);list-style:none}
+details>summary::before{content:'+ ';color:var(--tx3)}
+details[open]>summary::before{content:'- '}
+body.dragging::after{content:'松手，这几张图就进来了';position:fixed;inset:10px;z-index:99;
+  display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:500;
+  background:rgba(24,95,165,.08);border:2px dashed var(--acc);border-radius:12px;
+  color:var(--acc);pointer-events:none}
+body.dragging::after{content:'松手，这几张图就进来了';position:fixed;inset:12px;z-index:99;
+  display:flex;align-items:center;justify-content:center;font-size:15px;
+  background:rgba(24,95,165,.06);border:2px dashed var(--acc);border-radius:12px;color:var(--acc);
+  pointer-events:none}
 /* 板块与识别 */
 td select.zsel{width:100%;border:0;background:transparent;padding:2px 0;font-size:13px;
   font-family:inherit;color:var(--tx);outline:none;cursor:pointer}
@@ -172,28 +188,34 @@ td select.zsel{width:100%;border:0;background:transparent;padding:2px 0;font-siz
 
 <header class="no-print">
   <h1>一点点代购分杯助手</h1>
-  <div class="sub">接单编号 → 打印杯贴 → 现场报号核销　数据存在本机浏览器，关掉不会丢</div>
   <div class="stats">
     <div class="stat b"><b id="s-total">0</b><span>总杯数</span></div>
-    <div class="stat o"><b id="s-claim">0</b><span>不知道是谁</span></div>
-    <div class="stat o"><b id="s-left">0</b><span>待分发</span></div>
-    <div class="stat g"><b id="s-done">0</b><span>已取走</span></div>
+    <div class="stat o"><b id="s-claim">0</b><span>找不到人</span></div>
+    <div class="stat g"><b id="s-done">0</b><span>已发出</span></div>
   </div>
-  <div class="zrow" id="z-chips"></div>
+  <div class="guide" id="guide"></div>
+  <div class="zrow" id="z-chips" style="display:none"></div>
 </header>
 
 <nav class="no-print">
-  <button class="on" data-t="in">1 录单编号</button>
-  <button data-t="pr">2 打印清单</button>
-  <button data-t="out">3 分发核销</button>
-  <button data-t="ct">4 客户档案</button>
+  <button class="on" data-t="in">收单</button>
+  <button data-t="pr">打印</button>
+  <button data-t="out">发杯</button>
+  <button data-t="ct">客户</button>
 </nav>
 
 <!-- 录单 -->
 <div class="pane on" id="p-in">
   <div class="box">
     <h2>截图识别下单</h2>
-    <div class="tip">客户发来的一点点小程序截图，选图自动识别品名和规格，改一改就能入单。可以一次选好几张，逐张确认入单。一单两杯就入单后点行尾的「复」复制一行。第一次用要下载识别组件（约几 MB），之后会快。</div>
+    <div class="tip">选图自动认品名和规格，一次可以选好几张，逐张确认入单。一单两杯就入单后点行尾的「复」复制一行。</div>
+    <details><summary>怎么把微信里的图弄进来 / 认不出来怎么办</summary>
+      <div class="tip" style="margin:8px 0 0">
+        手机上：微信里长按订单截图 → 选「多选」→ 勾完点保存，再回这里一次全选（相册最新的排最前）。<br>
+        电脑上：用电脑版微信的话，直接把聊天里的图片<b>拖到这一页</b>就行，一次可以拖好几张。<br>
+        同一张图不会被重复收；截图被压糊认不出时，手动在下面表格加一行更快。第一次用要下载识别组件，等几秒。
+      </div>
+    </details>
     <div class="ocrbox">
       <div class="big">拍一张，或从相册选下单截图</div>
       <div class="tip2">识别结果先预览，改好再入单，支持一次选多张</div>
@@ -225,18 +247,29 @@ td select.zsel{width:100%;border:0;background:transparent;padding:2px 0;font-siz
     </div>
   </div>
 
+  <div class="box" id="box-claim">
+    <h2>配上人（谁下的单）</h2>
+    <div class="tip">截图上只有饮品，没有名字。把群里接龙的名字<b>按发截图的顺序</b>粘进来，点一下就一对一对配上。
+      每行一个人：<b>姓名</b>（可选空格 + <b>手机后四位</b>，再可选 + <b>板块</b>）。已经填过名字的单会跳过，不会覆盖。</div>
+    <div id="nc-list" class="cprow"></div>
+    <div class="row" style="margin:10px 0 0">
+      <button class="btn" onclick="copyNc()">复制没认领的编号（发群里让他们自报）</button>
+    </div>
+    <textarea id="namelist" placeholder="张三 8765&#10;李四 3421 到店自提&#10;王五" style="margin-top:10px"></textarea>
+    <div class="row" style="margin-top:10px">
+      <button class="btn pri" onclick="claimSeq()">按顺序认领</button>
+      <button class="btn" onclick="claimSeqPreview()">先看配对结果</button>
+      <span class="ts" id="claim-info"></span>
+    </div>
+    <div id="claim-prev"></div>
+  </div>
+
   <div class="box">
     <h2>订单表</h2>
     <div class="tip">编号自动生成。手机填后四位就够，现场报号最快。板块选师院 / 理工 / 自提，装箱单会按板块分组。</div>
     <div class="row">
       <button class="btn pri" onclick="addRow()">+ 加一行</button>
-      <button class="btn" onclick="addRows(10)">+ 加十行</button>
-      <button class="btn" onclick="renumber()">重新编号</button>
-      <button class="btn" onclick="sortBy('drink')">按品名排序</button>
-      <button class="btn" onclick="sortBy('zone')">按配送点排序</button>
       <button class="btn" id="btn-nc" onclick="toggleNc()">只看没认领的</button>
-      <button class="btn dgr" onclick="clearDone()">清掉已取</button>
-      <button class="btn dgr" onclick="clearAll()">清空全部</button>
     </div>
     <div class="tbl-scroll">
       <table id="tbl">
@@ -249,42 +282,28 @@ td select.zsel{width:100%;border:0;background:transparent;padding:2px 0;font-siz
         <tbody id="tb"></tbody>
       </table>
     </div>
-  </div>
-
-  <div class="box">
-    <h2>按顺序认领（一批截图配对最快的方式）</h2>
-    <div class="tip">微信里客户是挨个发截图的。你把这批人的名字<b>按发送顺序</b>粘进来，工具会从上到下依次认领那些还不知道是谁的单。<br>
-    每行一个人：<b>姓名</b>（可选空格 + <b>手机后四位</b>，再可选 + <b>板块</b>）。已经填过姓名的单会自动跳过，不会覆盖。<br>
-    名单从哪来最快：在群里发一个<b>接龙</b>（群接龙自带昵称顺序），或者直接复制微信聊天里挨个发言的顺序。</div>
-    <textarea id="namelist" placeholder="张三 8765&#10;李四 3421 到店自提&#10;王五"></textarea>
-    <div class="row" style="margin-top:10px">
-      <button class="btn pri" onclick="claimSeq()">按顺序认领</button>
-      <button class="btn" onclick="claimSeqPreview()">先看配对结果</button>
-      <button class="btn" onclick="document.getElementById('namelist').value=''">清空</button>
-      <span class="ts" id="claim-info"></span>
-    </div>
-    <div id="claim-prev"></div>
-  </div>
-
-  <div class="box">
-    <h2>批量粘贴导入</h2>
-    <div class="tip">从群接龙、问卷、Excel 复制出来直接粘。按行拆分，列之间用空格 / 逗号 / 制表符都认。列顺序默认：姓名、手机、品名、甜度温度、加料、配送点、备注，粘完在表格里改就行。</div>
-    <textarea id="paste" placeholder="张三 8765 四季奶青 少冰三分糖 波霸 建业小区&#10;李四 3421 红茶玛奇朵 去冰无糖 珍波椰 中达路"></textarea>
-    <div class="row" style="margin-top:10px">
-      <button class="btn pri" onclick="doPaste()">导入到表格</button>
-      <button class="btn" onclick="document.getElementById('paste').value=''">清空输入框</button>
-    </div>
-  </div>
-
-  <div class="box">
-    <h2>备份</h2>
-    <div class="tip">换手机或换浏览器前先导出，免得丢单。</div>
-    <div class="row" style="margin:0">
-      <button class="btn" onclick="exportJson()">导出备份文件</button>
-      <button class="btn" onclick="document.getElementById('file').click()">导入备份</button>
-      <button class="btn" onclick="exportCsv()">导出 Excel(CSV)</button>
-      <input type="file" id="file" accept=".json" style="display:none" onchange="importJson(this)">
-    </div>
+    <details><summary>更多操作（排序 / 清空 / 批量粘贴 / 备份）</summary>
+      <div class="row" style="margin:10px 0 0">
+        <button class="btn" onclick="addRows(10)">+ 加十行</button>
+        <button class="btn" onclick="renumber()">重新编号</button>
+        <button class="btn" onclick="sortBy('drink')">按品名排序</button>
+        <button class="btn" onclick="sortBy('zone')">按配送点排序</button>
+        <button class="btn dgr" onclick="clearDone()">清掉已取</button>
+        <button class="btn dgr" onclick="clearAll()">清空全部</button>
+      </div>
+      <div class="tip" style="margin:12px 0 0">批量粘贴：从群接龙 / 问卷 / Excel 复制出来直接粘，列之间空格逗号制表符都认，顺序是 姓名 手机 品名 甜度温度 加料 配送点 备注。</div>
+      <textarea id="paste" placeholder="张三 8765 四季奶青 少冰三分糖 波霸 师院配送&#10;李四 3421 红茶玛奇朵 去冰无糖 珍波椰 到店自提"></textarea>
+      <div class="row" style="margin-top:10px">
+        <button class="btn pri" onclick="doPaste()">导入到表格</button>
+      </div>
+      <div class="tip" style="margin:12px 0 0">备份：换手机或换浏览器前先导出，免得丢单。</div>
+      <div class="row" style="margin:0">
+        <button class="btn" onclick="exportJson()">导出备份文件</button>
+        <button class="btn" onclick="document.getElementById('file').click()">导入备份</button>
+        <button class="btn" onclick="exportCsv()">导出 Excel(CSV)</button>
+        <input type="file" id="file" accept=".json" style="display:none" onchange="importJson(this)">
+      </div>
+    </details>
   </div>
 </div>
 
@@ -322,14 +341,6 @@ td select.zsel{width:100%;border:0;background:transparent;padding:2px 0;font-siz
     </div>
   </div>
 
-  <div class="box">
-    <h2>还没认领的单</h2>
-    <div class="tip">这一批里还没配上人的编号。剩下的要么在表里点着补，要么把编号发群里让客户自己报。</div>
-    <div id="nc-list" class="cprow"></div>
-    <div class="row" style="margin:10px 0 0">
-      <button class="btn" onclick="copyNc()">复制编号名单（发群里收尾）</button>
-    </div>
-  </div>
 </div>
 
 <!-- 打印 -->
@@ -517,11 +528,11 @@ function renderStats(){
   var nc=orders.filter(isNc).length;
   document.getElementById('s-total').textContent=orders.length;
   document.getElementById('s-done').textContent=d;
-  document.getElementById('s-left').textContent=orders.length-d;
   document.getElementById('s-claim').textContent=nc;
   var cnt={'师院配送':0,'理工学院配送':0,'到店自提':0},other=0;
   orders.forEach(function(o){if(cnt[o.zone]!=null)cnt[o.zone]++;else if(o.zone)other++;});
-  document.getElementById('z-chips').innerHTML=
+  var zc=document.getElementById('z-chips'); if(!zc)return;
+  zc.innerHTML=
     ZONES.map(function(z,i){return '<div class="zchip zc'+i+'">'+z+'<b>'+cnt[z]+'</b></div>';}).join('')+
     (other?'<div class="zchip">其他<b>'+other+'</b></div>':'');
 }
@@ -638,7 +649,34 @@ function renderPick(){
   document.getElementById('progtx').textContent='已取 '+d+' / '+orders.length+' 杯（'+pct+'%）';
 }
 
-function renderAll(){renderTb();renderStats();renderPrint();renderPick();renderContacts();}
+/* ---- 顶部一句话引导：现在该干哪一步 ---- */
+function go(t){var b=document.querySelector('nav button[data-t="'+t+'"]'); if(b) b.click();}
+function renderGuide(){
+  var g=document.getElementById('guide'); if(!g) return;
+  var n=orders.length,
+      nc=orders.filter(isNc).length,
+      d=orders.filter(function(o){return o.done;}).length;
+  var t='',to='';
+  if(!n){
+    t='第 1 步：把客户发的下单截图弄进来。手机微信里长按多选→保存，回这儿一次全选；用电脑版微信就直接把图拖到页面上。';
+    to='in';
+  }else if(nc){
+    t='还有 '+nc+' 杯不知道是谁的。按接龙顺序把名字粘进去，一键认领；或者复制编号发群里让他们自报。';
+    to='in';
+  }else if(!d){
+    t='人都配齐了，共 '+n+' 杯。去打印杯贴，杯子上写号，装袋时按板块分箱。';
+    to='pr';
+  }else if(d<n){
+    t='还差 '+(n-d)+' 杯没发。让客户报编号，搜到点一下就核销。';
+    to='out';
+  }else{
+    t='今天 '+n+' 杯全发完了，收工。';
+    to='';
+  }
+  g.innerHTML='<span>'+t+'</span>'+
+    (to?'<a href="javascript:go(\''+to+'\')" style="float:right;font-weight:500;text-decoration:underline">去这一步</a>':'');
+}
+function renderAll(){renderTb();renderStats();renderPrint();renderPick();renderContacts();renderNc();renderGuide();}
 function switchTmpl(){renderPrint();}
 
 /* ---- 截图识别 ---- */
@@ -665,11 +703,43 @@ function loadTess(cb,idx){
   document.head.appendChild(s);
 }
 var ocrQ=[];
+/* 同一张图不重复收：微信和工具之间来回切，很容易把同一批又选一遍 */
+var seenImg={};
+function dedup(list){
+  return list.filter(function(f){
+    var k=f.name+'|'+f.size+'|'+(f.lastModified||0);
+    if(seenImg[k]) return false;
+    seenImg[k]=1; return true;
+  });
+}
+function showIn(){
+  var b=document.querySelector('nav button');
+  if(document.getElementById('p-in').className.indexOf('on')<0&&b) b.click();
+}
+function takeFiles(list){
+  list=dedup((list||[]).filter(function(f){return /^image\//.test(f.type||'');}));
+  if(!list.length) return 0;
+  showIn(); ocrQ=list; nextOcr();
+  return list.length;
+}
 async function ocrFile(inp){
   var fs=Array.prototype.slice.call(inp.files||[]); inp.value='';
   if(!fs.length) return;
-  ocrQ=fs; nextOcr();
+  if(!takeFiles(fs)) stat('这几张刚才已经收过了，换几张新的吧');
 }
+/* 电脑版微信里，把聊天中的图片直接拖到这一页就行 */
+window.addEventListener('dragover',function(e){
+  e.preventDefault(); document.body.classList.add('dragging');
+});
+window.addEventListener('dragleave',function(e){
+  if(!e.relatedTarget) document.body.classList.remove('dragging');
+});
+window.addEventListener('drop',function(e){
+  e.preventDefault(); document.body.classList.remove('dragging');
+  var fs=e.dataTransfer&&Array.prototype.slice.call(e.dataTransfer.files||[]);
+  if(!fs||!fs.length) return;
+  if(!takeFiles(fs)) stat('这几张刚才已经收过了');
+});
 function nextOcr(){
   if(!ocrQ.length){stat('这批截图都处理完了');return;}
   var left=ocrQ.length-1;
@@ -844,13 +914,16 @@ function ocrCancel(){
 document.addEventListener('paste',function(e){
   var items=e.clipboardData&&e.clipboardData.items;
   if(!items) return;
+  var got=[];
   for(var i=0;i<items.length;i++){
     if(items[i].type.indexOf('image')===0){
       var f=items[i].getAsFile();
-      if(f){e.preventDefault();runOcr(f,function(o){if(o)showPrev(o,0);});}
-      return;
+      if(f) got.push(f);
     }
   }
+  if(!got.length) return;
+  e.preventDefault();
+  if(!takeFiles(got)) stat('这几张刚才已经收过了');
 });
 
 /* ---- 客户档案 ---- */
@@ -922,9 +995,11 @@ function renderNc(){
   var el=document.getElementById('nc-list');
   if(!el) return;
   var nc=orders.filter(isNc);
-  el.innerHTML=nc.length?nc.map(function(o){
+  var bc=document.getElementById('box-claim');
+  if(bc) bc.style.display=nc.length?'':'none';
+  el.innerHTML=nc.map(function(o){
     return '<span class="cchip">'+esc(o.id)+'<i>'+esc((o.drink||'—').slice(0,6))+'</i></span>';
-  }).join(''):'<span class="ts" style="color:var(--ok);font-size:12px">全部单子都配上人了</span>';
+  }).join('');
 }
 function copyNc(){
   var nc=orders.filter(isNc).map(function(o){return o.id;});
